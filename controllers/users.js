@@ -1,13 +1,20 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-
+const { SECRET_KEY } = require('../utils/config');
 const User = require('../models/user');
+
 const {
   OK_STATUS,
   OK_CREATED,
 } = require('../utils/http_codes');
-const { SECRET_KEY } = require('../utils/config');
+
+const {
+  INCORRECT_EMAIL_OR_PASSWORD,
+  INCORRECT_DATA,
+  EMAIL_EXISTS,
+  USER_NOT_FOUND,
+} = require('../utils/messages');
 
 const NotFound = require('../utils/errors/NotFound');
 const BadRequest = require('../utils/errors/BadRequest');
@@ -22,7 +29,7 @@ module.exports.signin = (req, res, next) => {
     .then((user) => {
       bcrypt.compare(password, user.password, (err, result) => {
         if (!result) {
-          next(new Unauthorized('Неправильный email или пароль'));
+          next(new Unauthorized(INCORRECT_EMAIL_OR_PASSWORD));
         } else {
           const token = jwt.sign({ _id: user._id }, SECRET_KEY, { expiresIn: '7d' });
 
@@ -36,9 +43,9 @@ module.exports.signin = (req, res, next) => {
     })
     .catch((err) => {
       if (err instanceof mongoose.Error.DocumentNotFoundError) {
-        next(new Unauthorized('Неправильный email или пароль'));
+        next(new Unauthorized(INCORRECT_EMAIL_OR_PASSWORD));
       } else if (err instanceof mongoose.Error.CastError) {
-        next(new BadRequest('Переданы некорректные данные'));
+        next(new BadRequest(INCORRECT_DATA));
       } else {
         next(err);
       }
@@ -64,9 +71,9 @@ module.exports.signup = (req, res, next) => {
         }))
         .catch((err) => {
           if (err.code === 11000) {
-            next(new Conflict('Email уже зарегестриован'));
+            next(new Conflict(EMAIL_EXISTS));
           } else if (err instanceof mongoose.Error.ValidationError) {
-            next(new BadRequest('Переданы некорректные данные'));
+            next(new BadRequest(INCORRECT_DATA));
           } else {
             next(err);
           }
@@ -92,12 +99,16 @@ module.exports.updateUser = (req, res, next) => {
     new: true,
     runValidators: true,
   }).orFail()
-    .then((user) => res.status(OK_STATUS).send(user))
+    .then((user) => {
+      res.status(OK_STATUS).send(user);
+    })
     .catch((err) => {
       if (err instanceof mongoose.Error.DocumentNotFoundError) {
-        next(new NotFound('Пользователь не найден'));
+        next(new NotFound(USER_NOT_FOUND));
       } else if (err instanceof mongoose.Error.ValidationError) {
-        next(new BadRequest('Переданы некорректные данные'));
+        next(new BadRequest(INCORRECT_DATA));
+      } else if (err.code === 11000) {
+        next(new Conflict(EMAIL_EXISTS));
       } else {
         next(err);
       }

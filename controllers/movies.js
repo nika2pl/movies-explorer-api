@@ -5,14 +5,29 @@ const {
   OK_CREATED,
 } = require('../utils/http_codes');
 
+const {
+  PERMISSION_DENIED,
+  INCORRECT_DATA,
+  MOVIEID_NOT_FOUND,
+  MOVIES_NOT_FOUND,
+} = require('../utils/messages');
+
 const NotFound = require('../utils/errors/NotFound');
 const BadRequest = require('../utils/errors/BadRequest');
 const PermissionDenied = require('../utils/errors/PermissionDenied');
 
 module.exports.getCurrentUserMovies = (req, res, next) => {
-  Movie.find({ owner: req.user._id }).orFail().then((movies) => res.send(movies)).catch((err) => {
-    next(err);
-  });
+  Movie.find({ owner: req.user._id })
+    .orFail()
+    .then((movies) => {
+      res.send(movies);
+    }).catch((err) => {
+      if (err instanceof mongoose.Error.DocumentNotFoundError) {
+        next(new NotFound(MOVIES_NOT_FOUND));
+      } else {
+        next(err);
+      }
+    });
 };
 
 module.exports.createMovie = (req, res, next) => {
@@ -49,7 +64,7 @@ module.exports.createMovie = (req, res, next) => {
     .then((data) => res.status(OK_CREATED).send(data))
     .catch((err) => {
       if (err instanceof mongoose.Error.ValidationError) {
-        next(new BadRequest('Переданы некорректные данные'));
+        next(new BadRequest(INCORRECT_DATA));
       } else {
         next(err);
       }
@@ -61,18 +76,17 @@ module.exports.deleteMovie = (req, res, next) => {
     .orFail()
     .then((data) => {
       if (!data.owner.equals(req.user._id)) {
-        throw new PermissionDenied('Нет доступа');
-      } else {
-        Movie.deleteOne({ _id: req.params.movieId }).then((card) => {
-          res.status(OK_STATUS).send(card);
-        });
+        throw new PermissionDenied(PERMISSION_DENIED);
       }
+      return Movie.deleteOne({ _id: req.params.movieId }).then((card) => {
+        res.status(OK_STATUS).send(card);
+      });
     })
     .catch((err) => {
       if (err instanceof mongoose.Error.DocumentNotFoundError) {
-        next(new NotFound('movieId не найден'));
+        next(new NotFound(MOVIEID_NOT_FOUND));
       } else if (err instanceof mongoose.Error.CastError) {
-        next(new BadRequest('Переданы некорректные данные'));
+        next(new BadRequest(INCORRECT_DATA));
       } else {
         next(err);
       }
